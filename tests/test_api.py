@@ -13,6 +13,28 @@ import polars_yahoo as yh
 from polars_yahoo import _http
 
 
+def _quote_is_null() -> dict:
+    """A chart payload whose ``indicators.quote`` entry is null."""
+    payload = chart_payload([JAN2])
+    payload["chart"]["result"][0]["indicators"]["quote"] = [None]
+    return payload
+
+
+def _short_columns() -> dict:
+    """A chart payload with two timestamps but one-element price columns."""
+    payload = chart_payload([JAN2, JAN3])
+    quote = payload["chart"]["result"][0]["indicators"]["quote"][0]
+    for name in ("open", "high", "low", "close", "volume"):
+        quote[name] = quote[name][:1]
+    return payload
+
+
+MALFORMED_RESULTS = pytest.mark.parametrize(
+    "payload", [_quote_is_null(), _short_columns()], ids=["null-quote", "short"]
+)
+ERROR_IS_A_STRING = FakeResponse(500, {"chart": {"result": None, "error": "boom"}})
+
+
 class TestHttp:
     """Retry, error mapping and session handling in the HTTP layer."""
 
@@ -68,6 +90,12 @@ class TestHttp:
         """A ``result`` that is not a list of objects raises ResponseError."""
         session = FakeSession({"AAPL": FakeResponse(200, {"chart": {"result": results, "error": None}})})
         with pytest.raises(yh.ResponseError, match="malformed chart payload"):
+            _http.get_chart("AAPL", {}, session=session)
+
+    def test_error_that_is_not_an_object_is_a_response_error(self):
+        """A chart ``error`` that is a string, not an object, raises ResponseError, not AttributeError."""
+        session = FakeSession({"AAPL": ERROR_IS_A_STRING})
+        with pytest.raises(yh.ResponseError, match="HTTP 500: unexpected response"):
             _http.get_chart("AAPL", {}, session=session)
 
     def test_transport_error_is_a_network_error(self):
@@ -135,6 +163,15 @@ class TestTicker:
         assert df.height == 2
         assert session.calls[0][1]["range"] == "5d"
 
+    @MALFORMED_RESULTS
+    def test_malformed_result_is_a_response_error(self, payload):
+        """A result whose fields have the wrong shape raises ResponseError, chained to the parser's error."""
+        session = FakeSession({"AAPL": payload})
+        with pytest.raises(yh.ResponseError, match="HTTP 200: malformed chart payload") as info:
+            yh.Ticker("AAPL", session=session).history(period="5d")
+        assert info.value.status == 200
+        assert info.value.__cause__ is not None
+
     def test_dividends_and_splits_use_full_range(self):
         """Corporate actions are fetched over the full history."""
         events = {"dividends": {"1": {"amount": 0.5, "date": JAN2}}}
@@ -188,6 +225,18 @@ class TestDownload:
         """A symbol whose response body is not a chart object is skipped, not fatal."""
         session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": FakeResponse(200, None)})
         with pytest.warns(UserWarning, match="skipping MSFT: MSFT: HTTP 200: malformed chart payload"):
+            df = yh.download(["AAPL", "MSFT"], session=session)
+        assert df["ticker"].unique().to_list() == ["AAPL"]
+
+    @pytest.mark.parametrize(
+        "response",
+        [ERROR_IS_A_STRING, _quote_is_null(), _short_columns()],
+        ids=["error-is-a-string", "null-quote", "short"],
+    )
+    def test_malformed_result_warns_and_skips(self, response):
+        """A symbol whose chart data has the wrong shape is skipped, and the others are still returned."""
+        session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": response})
+        with pytest.warns(UserWarning, match="skipping MSFT: MSFT: HTTP"):
             df = yh.download(["AAPL", "MSFT"], session=session)
         assert df["ticker"].unique().to_list() == ["AAPL"]
 

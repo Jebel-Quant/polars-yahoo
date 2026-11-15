@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import cached_property
 from typing import Any
 
@@ -9,6 +10,10 @@ import polars as pl
 
 from . import _chart, _http
 from ._chart import DateLike
+from .exceptions import ResponseError
+
+# What a parser raises when a chart result does not have the shape Yahoo documents.
+_PARSE_ERRORS = (KeyError, TypeError, AttributeError, pl.exceptions.PolarsError)
 
 
 class Ticker:
@@ -30,6 +35,16 @@ class Ticker:
         """Show the symbol."""
         return f"Ticker({self.symbol!r})"
 
+    def _parse(self, parser: Callable[..., pl.DataFrame], *args: Any) -> pl.DataFrame:
+        """Run ``parser`` on a chart result, turning a malformed result into :class:`ResponseError`.
+
+        ``get_chart`` only returns a result Yahoo sent as usable data, so the status is 200.
+        """
+        try:
+            return parser(self.symbol, *args)
+        except _PARSE_ERRORS as exc:
+            raise ResponseError(self.symbol, 200, "malformed chart payload") from exc
+
     def history(
         self,
         period: str | None = "1mo",
@@ -46,7 +61,7 @@ class Ticker:
         """
         params = _chart.build_params(period=period, interval=interval, start=start, end=end, prepost=prepost)
         result = _http.get_chart(self.symbol, params, session=self._session)
-        return _chart.parse_prices(self.symbol, result, interval)
+        return self._parse(_chart.parse_prices, result, interval)
 
     @cached_property
     def _events(self) -> dict[str, Any]:
@@ -62,8 +77,8 @@ class Ticker:
 
     def dividends(self) -> pl.DataFrame:
         """Return the full dividend history: ``ticker, date, dividend``."""
-        return _chart.parse_dividends(self.symbol, self._events)
+        return self._parse(_chart.parse_dividends, self._events)
 
     def splits(self) -> pl.DataFrame:
         """Return the full split history: ``ticker, date, numerator, denominator, ratio``."""
-        return _chart.parse_splits(self.symbol, self._events)
+        return self._parse(_chart.parse_splits, self._events)
