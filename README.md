@@ -67,8 +67,9 @@ df.with_columns((pl.col("open", "high", "low", "close") * pl.col("adj_close") / 
 ## Errors
 
 All errors subclass `polars_yahoo.YahooError`:
-`TickerNotFoundError` (unknown or delisted symbol) and `RateLimitError`
-(HTTP 429 persisted after retries with exponential backoff).
+`TickerNotFoundError` (unknown or delisted symbol), `RateLimitError`
+(HTTP 429 persisted after retries with exponential backoff) and
+`ResponseError` (any other unusable response; carries `status` and `reason`).
 `download` skips failing symbols with a warning unless `raise_errors=True`.
 
 ## What is deliberately missing

@@ -50,10 +50,13 @@ NOT_FOUND = {
 
 @dataclass
 class FakeResponse:
+    """A canned response: a status code and a JSON body (or an exception to raise on ``json()``)."""
+
     status_code: int
     body: Any
 
     def json(self) -> Any:
+        """Return the body, or raise it if it is an exception."""
         if isinstance(self.body, Exception):
             raise self.body
         return self.body
@@ -67,6 +70,7 @@ class FakeSession:
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
     def get(self, url: str, *, params: dict[str, Any], timeout: float) -> FakeResponse:
+        """Record the call and return the next canned response for the ticker in the URL."""
         ticker = url.rsplit("/", 1)[-1]
         self.calls.append((ticker, params))
         route = self.routes[ticker]
@@ -79,4 +83,5 @@ class FakeSession:
 
 @pytest.fixture
 def fake_session():
+    """Expose :class:`FakeSession` as a fixture."""
     return FakeSession

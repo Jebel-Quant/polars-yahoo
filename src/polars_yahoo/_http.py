@@ -13,7 +13,7 @@ from typing import Any, Protocol
 
 from curl_cffi import requests as _requests
 
-from .exceptions import RateLimitError, TickerNotFoundError, YahooError
+from .exceptions import RateLimitError, ResponseError, TickerNotFoundError
 
 CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
 
@@ -70,12 +70,12 @@ def get_chart(
         if attempt < retries:
             time.sleep(backoff * 2**attempt)
     else:
-        raise RateLimitError(f"{ticker}: Yahoo rate limit (HTTP 429) persisted after {retries} retries")
+        raise RateLimitError(ticker, retries)
 
     try:
         payload = response.json()
     except ValueError as exc:
-        raise YahooError(f"{ticker}: HTTP {response.status_code}, body is not JSON") from exc
+        raise ResponseError(ticker, response.status_code, "body is not JSON") from exc
 
     chart = payload.get("chart") or {}
     error = chart.get("error")
@@ -84,5 +84,5 @@ def get_chart(
         reason = (error or {}).get("description")
         if response.status_code in (200, 404):
             raise TickerNotFoundError(ticker, reason)
-        raise YahooError(f"{ticker}: HTTP {response.status_code}: {reason or 'unexpected response'}")
+        raise ResponseError(ticker, response.status_code, reason or "unexpected response")
     return results[0]
