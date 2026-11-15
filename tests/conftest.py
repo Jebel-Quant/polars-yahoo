@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import unquote
 
 import pytest
 
@@ -90,7 +91,7 @@ class FakeSession:
 
     def get(self, url: str, *, params: dict[str, Any], timeout: float) -> FakeResponse:
         """Record the call and return the next canned response for the ticker in the URL."""
-        ticker = url.rsplit("/", 1)[-1]
+        ticker = unquote(url.rsplit("/", 1)[-1])
         self.calls.append((ticker, params))
         route = self.routes[ticker]
         if isinstance(route, list):

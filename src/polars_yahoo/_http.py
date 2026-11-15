@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 import time
 from typing import Any, Protocol
+from urllib.parse import quote
 
 from curl_cffi import requests as _requests
 
@@ -109,6 +110,7 @@ def get_chart(
     Raises :class:`TickerNotFoundError` when Yahoo reports no data for the symbol,
     and :class:`NetworkError` when no HTTP response arrives at all.
     """
-    url = CHART_URL.format(ticker=ticker)
+    # Escape every reserved character so the symbol stays one path segment.
+    url = CHART_URL.format(ticker=quote(ticker, safe=""))
     response = _send(session or default_session(), url, params, ticker, timeout, retries, backoff)
     return _decode(ticker, response)
