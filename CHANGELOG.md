@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com),
 and entries are generated from [Conventional Commits](https://www.conventionalcommits.org).
 
+## [0.3.0] - 2026-11-15
+
+### Bug Fixes
+- Send period="max" as an explicit window so daily bars stay daily (#13)
+- Raise NetworkError for transport failures so download() skips them (#15) (#20)
+- Raise ResponseError for malformed chart payloads (#23) (#25)
+- URL-escape the ticker symbol in the chart URL (#24) (#26)
+- Drop the ignored [tool.ruff] config and merge test dependency groups (#28) (#29)
+- Turn malformed chart data into ResponseError so download() skips the symbol (#27) (#30)
+- Expose timeout, retries and backoff on Ticker and download (#31) (#33)
+- Reuse curl_cffi sessions across download() calls via a session pool (#32) (#34)
+- Reject invalid timeout, retries and backoff before any request (#35) (#36)
+
+### Documentation
+- Add badges to the README (#14)
+- Add doctest examples to the pure helpers in _chart.py (#16) (#19)
+
+### Maintenance
+- Bring get_chart, download and build_params below radon rank C (#17) (#21)
+- Stop _download using _chart privates; fetch events once per Ticker (#18) (#22)
+
 ## [0.2.0] - 2026-11-15
 
 ### Documentation
