@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import queue
+import threading
+import time
 from urllib.parse import unquote
 
 import polars as pl
@@ -27,6 +30,48 @@ def _short_columns() -> dict:
     for name in ("open", "high", "low", "close", "volume"):
         quote[name] = quote[name][:1]
     return payload
+
+
+class _ProbeSession:
+    """Answers every request with one bar, and fails if two threads use it at once."""
+
+    def __init__(self) -> None:
+        """Start idle."""
+        self.busy = threading.Lock()
+
+    def get(self, url: str, *, params: dict, timeout: float) -> FakeResponse:
+        """Hold the session briefly so overlapping use would be caught."""
+        if not self.busy.acquire(blocking=False):
+            raise AssertionError("session used by two threads at once")  # noqa: TRY003
+        try:
+            time.sleep(0.01)
+            return FakeResponse(200, chart_payload([JAN2]))
+        finally:
+            self.busy.release()
+
+
+class _SessionFactory:
+    """Stands in for ``_http._new_session`` and counts the sessions it creates."""
+
+    def __init__(self) -> None:
+        """Nothing created yet."""
+        self.created = 0
+        self._lock = threading.Lock()
+
+    def __call__(self) -> _ProbeSession:
+        """Create and count a probe session."""
+        with self._lock:
+            self.created += 1
+        return _ProbeSession()
+
+
+@pytest.fixture
+def session_factory(monkeypatch) -> _SessionFactory:
+    """Give the default path an empty pool whose new sessions are counted probes."""
+    factory = _SessionFactory()
+    monkeypatch.setattr(_http, "_pool", queue.SimpleQueue())
+    monkeypatch.setattr(_http, "_new_session", factory)
+    return factory
 
 
 MALFORMED_RESULTS = pytest.mark.parametrize(
@@ -108,16 +153,23 @@ class TestHttp:
         assert info.value.ticker == "AAPL"
         assert info.value.__cause__ is cause
 
-    def test_default_session_is_per_thread(self):
-        """Each thread gets its own reused session."""
-        import threading
+    def test_pooled_session_is_returned_and_reused(self, session_factory):
+        """A lent session goes back to the pool, so the next request reuses it."""
+        with _http.pooled_session() as first:
+            pass
+        with _http.pooled_session() as second:
+            assert second is first
+        assert session_factory.created == 1
 
-        seen = []
-        t = threading.Thread(target=lambda: seen.append(_http.default_session()))
-        t.start()
-        t.join()
-        assert _http.default_session() is _http.default_session()
-        assert seen[0] is not _http.default_session()
+    def test_pool_lends_distinct_sessions_at_once(self, session_factory):
+        """Sessions lent at the same time are never the same object."""
+        with _http.pooled_session() as first, _http.pooled_session() as second:
+            assert first is not second
+        assert session_factory.created == 2
+
+    def test_new_session_impersonates_a_browser(self):
+        """The real factory builds a curl_cffi session (no request is made)."""
+        assert isinstance(_http._new_session(), _http._requests.Session)
 
     @pytest.mark.parametrize("symbol", ["A/B", "A?range=max#", "^GSPC"])
     def test_symbol_is_one_escaped_path_segment(self, symbol):
@@ -211,12 +263,25 @@ class TestDownload:
         assert df["ticker"].to_list() == ["AAPL", "MSFT", "MSFT"]
         assert len(session.calls) == 2  # de-duplicated
 
-    def test_threaded_by_default(self, monkeypatch):
-        """Without a session, requests go through the per-thread default session."""
-        session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": chart_payload([JAN3])})
-        monkeypatch.setattr(_http, "default_session", lambda: session)
+    def test_threaded_by_default(self, session_factory):
+        """Without a session, requests run concurrently on pooled sessions."""
         df = yh.download(["AAPL", "MSFT"], max_workers=4)
         assert sorted(df["ticker"].to_list()) == ["AAPL", "MSFT"]
+
+    def test_consecutive_downloads_reuse_sessions(self, session_factory):
+        """A second download() reuses the pooled session instead of creating one."""
+        yh.download(["AAPL", "MSFT", "IBM"], max_workers=1)
+        assert session_factory.created == 1
+        yh.download(["AAPL", "MSFT", "IBM"], max_workers=1)
+        assert session_factory.created == 1
+
+    def test_concurrent_downloads_never_share_a_session(self, session_factory):
+        """With 8 workers no session serves two threads at once, and the pool caps creation at 8."""
+        symbols = [f"S{i}" for i in range(16)]
+        for _ in range(2):
+            df = yh.download(symbols, max_workers=8, raise_errors=True)
+            assert df["ticker"].n_unique() == 16
+        assert 1 <= session_factory.created <= 8  # 32 requests, at most 8 sessions
 
     def test_request_settings_reach_every_symbol(self, monkeypatch):
         """timeout, retries and backoff given to download() are used for every symbol."""

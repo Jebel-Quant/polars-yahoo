@@ -1,14 +1,18 @@
 """HTTP access to Yahoo's chart endpoint.
 
 A browser-impersonating ``curl_cffi`` session is used because Yahoo
-rate-limits clients that don't look like a browser. Sessions are kept per
-thread, since a ``curl_cffi`` session must not be shared across threads.
+rate-limits clients that don't look like a browser. Sessions live in a
+module-level pool and outlast a single call, so their connections are reused.
+A request takes a session out of the pool and puts it back afterwards, which
+means a ``curl_cffi`` session is never used by two threads at once.
 """
 
 from __future__ import annotations
 
-import threading
+import queue
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, Protocol
 from urllib.parse import quote
 
@@ -22,8 +26,6 @@ CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
 TIMEOUT = 30.0
 RETRIES = 3
 BACKOFF = 1.0
-
-_local = threading.local()
 
 
 class Response(Protocol):
@@ -44,13 +46,26 @@ class Session(Protocol):
         ...
 
 
-def default_session() -> Session:
-    """Return this thread's shared browser-impersonating session."""
-    session = getattr(_local, "session", None)
-    if session is None:
-        session = _requests.Session(impersonate="chrome")
-        _local.session = session
-    return session
+def _new_session() -> Session:
+    """Create a browser-impersonating session."""
+    return _requests.Session(impersonate="chrome")
+
+
+# Idle sessions. It grows to at most the number of requests that ran at the same time.
+_pool: queue.SimpleQueue[Session] = queue.SimpleQueue()
+
+
+@contextmanager
+def pooled_session() -> Iterator[Session]:
+    """Lend an idle session from the pool, or a new one if none is idle, and return it afterwards."""
+    try:
+        session = _pool.get_nowait()
+    except queue.Empty:
+        session = _new_session()
+    try:
+        yield session
+    finally:
+        _pool.put(session)
 
 
 def _send(
@@ -117,5 +132,9 @@ def get_chart(
     """
     # Escape every reserved character so the symbol stays one path segment.
     url = CHART_URL.format(ticker=quote(ticker, safe=""))
-    response = _send(session or default_session(), url, params, ticker, timeout, retries, backoff)
+    if session is None:
+        with pooled_session() as pooled:
+            response = _send(pooled, url, params, ticker, timeout, retries, backoff)
+    else:
+        response = _send(session, url, params, ticker, timeout, retries, backoff)
     return _decode(ticker, response)
