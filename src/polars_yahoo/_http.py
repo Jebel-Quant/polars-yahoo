@@ -89,7 +89,7 @@ def _decode(ticker: str, response: Response) -> dict[str, Any]:
     results = chart.get("result")
     if results and not error:
         return _first_result(ticker, response.status_code, results)
-    reason = (error or {}).get("description")
+    reason = error.get("description") if isinstance(error, dict) else None
     if response.status_code in (200, 404):
         raise TickerNotFoundError(ticker, reason)
     raise ResponseError(ticker, response.status_code, reason or "unexpected response")
