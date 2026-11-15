@@ -21,6 +21,36 @@ def _normalise(tickers: str | Iterable[str]) -> list[str]:
     return list(dict.fromkeys(s.strip().upper() for s in items if s and s.strip()))
 
 
+def _collect(symbols: list[str], outcomes: list[pl.DataFrame | YahooError], raise_errors: bool) -> list[pl.DataFrame]:
+    """Keep the frames that arrived; warn about (or raise) the failures."""
+    frames: list[pl.DataFrame] = []
+    for symbol, outcome in zip(symbols, outcomes, strict=True):
+        if isinstance(outcome, YahooError):
+            if raise_errors:
+                raise outcome
+            # stacklevel=3: attribute the warning to download()'s caller.
+            warnings.warn(f"skipping {symbol}: {outcome}", stacklevel=3)
+        else:
+            frames.append(outcome)
+    return frames
+
+
+def _stack(frames: list[pl.DataFrame], interval: str) -> pl.DataFrame:
+    """Stack per-symbol frames into one, sorted by ticker then time.
+
+    Intraday frames on different time zones are converted to UTC first, since a
+    polars column holds a single time zone.
+    """
+    intraday = _chart.is_intraday(interval)
+    if not frames:
+        return pl.DataFrame(schema=_chart._price_schema(intraday, "UTC"))
+    if intraday:
+        zones = {dtype.time_zone for f in frames if isinstance(dtype := f.schema["timestamp"], pl.Datetime)}
+        if len(zones) > 1:
+            frames = [f.with_columns(pl.col("timestamp").dt.convert_time_zone("UTC")) for f in frames]
+    return pl.concat(frames, how="vertical").sort("ticker", "timestamp" if intraday else "date")
+
+
 def download(
     tickers: str | Iterable[str],
     period: str | None = "1mo",
@@ -61,22 +91,4 @@ def download(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         outcomes = list(pool.map(fetch, symbols))
 
-    frames: list[pl.DataFrame] = []
-    for symbol, outcome in zip(symbols, outcomes, strict=True):
-        if isinstance(outcome, YahooError):
-            if raise_errors:
-                raise outcome
-            warnings.warn(f"skipping {symbol}: {outcome}", stacklevel=2)
-        else:
-            frames.append(outcome)
-
-    if not frames:
-        return pl.DataFrame(schema=_chart._price_schema(_chart.is_intraday(interval), "UTC"))
-
-    if _chart.is_intraday(interval):
-        zones = {dtype.time_zone for f in frames if isinstance(dtype := f.schema["timestamp"], pl.Datetime)}
-        if len(zones) > 1:
-            frames = [f.with_columns(pl.col("timestamp").dt.convert_time_zone("UTC")) for f in frames]
-
-    time_col = "timestamp" if _chart.is_intraday(interval) else "date"
-    return pl.concat(frames, how="vertical").sort("ticker", time_col)
+    return _stack(_collect(symbols, outcomes, raise_errors), interval)
