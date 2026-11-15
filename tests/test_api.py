@@ -214,7 +214,7 @@ class TestDownload:
 @pytest.mark.live
 def test_live_round_trip():
     """Download real data from Yahoo (opt in with ``-m live``)."""
-    df = yh.download(["AAPL", "MSFT"], period="5d")
-    assert set(df["ticker"]) == {"AAPL", "MSFT"}
+    df = yh.download(["AAPL", "MSFT", "^GSPC"], period="5d")  # ^GSPC is sent percent-encoded
+    assert set(df["ticker"]) == {"AAPL", "MSFT", "^GSPC"}
     assert df["close"].null_count() == 0
     assert yh.Ticker("AAPL").splits().height >= 5
