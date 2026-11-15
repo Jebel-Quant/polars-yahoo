@@ -19,7 +19,7 @@ class Ticker:
         """Normalise the symbol (stripped, upper-case) and keep the session."""
         symbol = symbol.strip().upper()
         if not symbol:
-            raise ValueError("symbol must not be empty")
+            raise ValueError("symbol must not be empty")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
         self.symbol = symbol
         self._session = session
 
@@ -46,8 +46,11 @@ class Ticker:
         return _chart.parse_prices(self.symbol, result, interval)
 
     def _events(self) -> dict:
-        # Yahoo returns every event in range whatever the interval, so ask for
-        # the coarsest bars to keep the payload small.
+        """Fetch the full-history chart result that carries dividends and splits.
+
+        Yahoo returns every event in range whatever the interval, so the
+        coarsest bars are requested to keep the payload small.
+        """
         params = _chart.build_params(period="max", interval="3mo")
         return _http.get_chart(self.symbol, params, session=self._session)
 

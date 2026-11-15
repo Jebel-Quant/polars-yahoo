@@ -46,11 +46,12 @@ def download(
     """
     symbols = _normalise(tickers)
     if not symbols:
-        raise ValueError("no tickers given")
+        raise ValueError("no tickers given")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
     # Validate once, up front, so bad arguments fail before any request.
     _chart.build_params(period=period, interval=interval, start=start, end=end, prepost=prepost)
 
     def fetch(symbol: str) -> pl.DataFrame | YahooError:
+        """Fetch one symbol, returning the error instead of raising so other symbols still complete."""
         try:
             return Ticker(symbol, session=session).history(period, interval, start, end, prepost)
         except YahooError as exc:

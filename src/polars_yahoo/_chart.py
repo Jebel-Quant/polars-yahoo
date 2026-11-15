@@ -54,7 +54,7 @@ def build_params(
     """
     if interval not in INTERVALS:
         hint = " (Yahoo returns unreliable 30m bars; use 15m)" if interval == "30m" else ""
-        raise ValueError(f"interval must be one of {', '.join(INTERVALS)}, got {interval!r}{hint}")
+        raise ValueError(f"interval must be one of {', '.join(INTERVALS)}, got {interval!r}{hint}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
 
     params: dict[str, Any] = {
         "interval": interval,
@@ -66,17 +66,18 @@ def build_params(
         params["period1"] = _to_epoch(start)
         params["period2"] = _to_epoch(end) if end is not None else int(dt.datetime.now(dt.UTC).timestamp())
         if params["period2"] <= params["period1"]:
-            raise ValueError("end must be after start")
+            raise ValueError("end must be after start")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
     elif end is not None:
-        raise ValueError("end requires start")
+        raise ValueError("end requires start")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
     else:
         if period not in PERIODS:
-            raise ValueError(f"period must be one of {', '.join(PERIODS)}, got {period!r}")
+            raise ValueError(f"period must be one of {', '.join(PERIODS)}, got {period!r}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
         params["range"] = period
     return params
 
 
 def _price_schema(intraday: bool, tz: str) -> dict[str, pl.DataType]:
+    """Return the price-frame schema: ``date`` for daily bars, a tz-aware ``timestamp`` for intraday."""
     time_col: dict[str, pl.DataType] = (
         {"timestamp": pl.Datetime("us", time_zone=tz)} if intraday else {"date": pl.Date()}
     )
@@ -123,6 +124,7 @@ def parse_prices(ticker: str, result: dict[str, Any], interval: str) -> pl.DataF
     n = len(timestamps)
 
     def column(values: list[Any] | None) -> list[Any]:
+        """Return ``values``, or a column of nulls when Yahoo omitted the field."""
         return values if values is not None else [None] * n
 
     frame = pl.DataFrame(
@@ -136,7 +138,7 @@ def parse_prices(ticker: str, result: dict[str, Any], interval: str) -> pl.DataF
             "adj_close": column(adjclose),
             "volume": column(quote.get("volume")),
         },
-        schema_overrides={c: pl.Float64 for c in PRICE_COLUMNS} | {"volume": pl.Int64},
+        schema_overrides=dict.fromkeys(PRICE_COLUMNS, pl.Float64) | {"volume": pl.Int64},
     ).filter(~pl.all_horizontal(pl.col("open", "high", "low", "close").is_null()))
 
     if not intraday:

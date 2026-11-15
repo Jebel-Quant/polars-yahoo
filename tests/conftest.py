@@ -12,6 +12,25 @@ JAN2, JAN3, JAN4, JAN5 = 1704205800, 1704292200, 1704378600, 1704465000
 JAN4_LIVE = 1704398400  # 15:00 New York, same calendar day as JAN4
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the ``live`` marker (the template's pytest.ini owns the marker list)."""
+    config.addinivalue_line("markers", "live: hits Yahoo over the network (skipped unless selected with -m live)")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip ``live`` tests unless the run explicitly selects them with ``-m live``.
+
+    The default suite, and therefore CI, must never depend on Yahoo being reachable.
+    """
+    markexpr = config.getoption("markexpr") or ""
+    if "live" in markexpr and "not live" not in markexpr:
+        return
+    skip = pytest.mark.skip(reason="hits Yahoo; run with -m live")
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip)
+
+
 def chart_payload(
     timestamps: list[int],
     *,
@@ -50,10 +69,13 @@ NOT_FOUND = {
 
 @dataclass
 class FakeResponse:
+    """A canned response: a status code and a JSON body (or an exception to raise on ``json()``)."""
+
     status_code: int
     body: Any
 
     def json(self) -> Any:
+        """Return the body, or raise it if it is an exception."""
         if isinstance(self.body, Exception):
             raise self.body
         return self.body
@@ -67,6 +89,7 @@ class FakeSession:
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
     def get(self, url: str, *, params: dict[str, Any], timeout: float) -> FakeResponse:
+        """Record the call and return the next canned response for the ticker in the URL."""
         ticker = url.rsplit("/", 1)[-1]
         self.calls.append((ticker, params))
         route = self.routes[ticker]
@@ -79,4 +102,5 @@ class FakeSession:
 
 @pytest.fixture
 def fake_session():
+    """Expose :class:`FakeSession` as a fixture."""
     return FakeSession
