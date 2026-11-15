@@ -15,7 +15,9 @@ uv add polars-yahoo
 
 ## Use
 
-```python
+These calls go to Yahoo, so the README check skips this block (`+RHIZA_SKIP`).
+
+```python +RHIZA_SKIP
 import polars_yahoo as yh
 
 # One symbol
@@ -50,7 +52,15 @@ different time zones, because a polars column holds one time zone.
 To adjust OHLC yourself:
 
 ```python
-df.with_columns((pl.col("open", "high", "low", "close") * pl.col("adj_close") / pl.col("close")))
+import polars as pl
+
+df = pl.DataFrame({"open": [10.0], "high": [12.0], "low": [9.0], "close": [11.0], "adj_close": [5.5]})
+adjusted = df.with_columns(pl.col("open", "high", "low", "close") * pl.col("adj_close") / pl.col("close"))
+print(adjusted.row(0))
+```
+
+```result
+(5.0, 6.0, 4.5, 5.5, 5.5)
 ```
 
 `dividends()` returns `ticker, date, dividend`; `splits()` returns
