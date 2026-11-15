@@ -54,6 +54,21 @@ class TestHttp:
             _http.get_chart("AAPL", {}, session=session)
         assert not isinstance(info.value, yh.TickerNotFoundError)
 
+    @pytest.mark.parametrize("body", [None, [1, 2], "text", {"chart": "oops"}])
+    def test_non_object_body_is_a_response_error(self, body):
+        """A JSON body (or ``chart``) that is not an object raises ResponseError, not AttributeError."""
+        session = FakeSession({"AAPL": FakeResponse(200, body)})
+        with pytest.raises(yh.ResponseError, match="malformed chart payload") as info:
+            _http.get_chart("AAPL", {}, session=session)
+        assert info.value.status == 200
+
+    @pytest.mark.parametrize("results", [["oops"], [None], "oops"])
+    def test_non_object_result_is_a_response_error(self, results):
+        """A ``result`` that is not a list of objects raises ResponseError."""
+        session = FakeSession({"AAPL": FakeResponse(200, {"chart": {"result": results, "error": None}})})
+        with pytest.raises(yh.ResponseError, match="malformed chart payload"):
+            _http.get_chart("AAPL", {}, session=session)
+
     def test_transport_error_is_a_network_error(self):
         """A request that never gets a response raises NetworkError, chained to the cause."""
         cause = OSError("Connection timed out")
@@ -139,6 +154,13 @@ class TestDownload:
         """A symbol whose request fails at the transport level is skipped, not fatal."""
         session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": OSError("Connection reset")})
         with pytest.warns(UserWarning, match="skipping MSFT: MSFT: network error"):
+            df = yh.download(["AAPL", "MSFT"], session=session)
+        assert df["ticker"].unique().to_list() == ["AAPL"]
+
+    def test_malformed_payload_warns_and_skips(self):
+        """A symbol whose response body is not a chart object is skipped, not fatal."""
+        session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": FakeResponse(200, None)})
+        with pytest.warns(UserWarning, match="skipping MSFT: MSFT: HTTP 200: malformed chart payload"):
             df = yh.download(["AAPL", "MSFT"], session=session)
         assert df["ticker"].unique().to_list() == ["AAPL"]
 
