@@ -59,3 +59,16 @@ replace = '[project]\1version = "{new_version}"'
 filename = "src/polars_yahoo/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
+
+# uv.lock records the project's own version; anchored to its package block so no
+# dependency that happens to share the version number is touched.
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+search = '''
+name = "polars-yahoo"
+version = "{current_version}"
+'''
+replace = '''
+name = "polars-yahoo"
+version = "{new_version}"
+'''
