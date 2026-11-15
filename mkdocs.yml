@@ -1,0 +1,6 @@
+INHERIT: docs/mkdocs-base.yml
+
+site_name: "polars-yahoo"
+site_description: "Minimal Yahoo Finance price history as polars DataFrames"
+repo_url: "https://github.com/tschm/polars-yahoo"
+repo_name: "tschm/polars-yahoo"
