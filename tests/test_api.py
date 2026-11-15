@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from urllib.parse import unquote
 
 import polars as pl
 import pytest
@@ -74,6 +75,32 @@ class TestHttp:
         t.join()
         assert _http.default_session() is _http.default_session()
         assert seen[0] is not _http.default_session()
+
+    @pytest.mark.parametrize("symbol", ["A/B", "A?range=max#", "^GSPC"])
+    def test_symbol_is_one_escaped_path_segment(self, symbol):
+        """Reserved characters in a symbol are percent-encoded and cannot alter the request URL."""
+        urls = []
+
+        class Recorder:
+            """Record the requested URL and answer with a valid chart."""
+
+            def get(self, url, *, params, timeout):
+                """Keep the URL; return one bar."""
+                urls.append(url)
+                return FakeResponse(200, chart_payload([JAN2]))
+
+        _http.get_chart(symbol, {}, session=Recorder())
+        base, segment = urls[0].rsplit("/", 1)
+        assert base == "https://query2.finance.yahoo.com/v8/finance/chart"
+        assert not set("/?#") & set(segment)
+        assert unquote(segment) == symbol
+
+    def test_index_symbol_round_trips(self):
+        """A ``^``-style index symbol is fetched and labelled unchanged."""
+        session = FakeSession({"^GSPC": chart_payload([JAN2])})
+        df = yh.Ticker("^gspc", session=session).history()
+        assert df["ticker"].to_list() == ["^GSPC"]
+        assert session.calls[0][0] == "^GSPC"
 
 
 class TestTicker:
