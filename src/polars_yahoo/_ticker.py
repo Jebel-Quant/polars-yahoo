@@ -21,15 +21,39 @@ class Ticker:
 
     ``session`` lets you inject any object with a ``requests``-style ``get``;
     by default a browser-impersonating ``curl_cffi`` session is used.
+    ``timeout`` is in seconds per request; an HTTP 429 is retried up to
+    ``retries`` times, waiting ``backoff * 2**attempt`` seconds between tries.
     """
 
-    def __init__(self, symbol: str, *, session: _http.Session | None = None) -> None:
-        """Normalise the symbol (stripped, upper-case) and keep the session."""
+    def __init__(
+        self,
+        symbol: str,
+        *,
+        session: _http.Session | None = None,
+        timeout: float = _http.TIMEOUT,
+        retries: int = _http.RETRIES,
+        backoff: float = _http.BACKOFF,
+    ) -> None:
+        """Normalise the symbol (stripped, upper-case) and keep the session and request settings."""
         symbol = symbol.strip().upper()
         if not symbol:
             raise ValueError("symbol must not be empty")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
         self.symbol = symbol
         self._session = session
+        self._timeout = timeout
+        self._retries = retries
+        self._backoff = backoff
+
+    def _get(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Fetch one chart result with this ticker's session and request settings."""
+        return _http.get_chart(
+            self.symbol,
+            params,
+            session=self._session,
+            timeout=self._timeout,
+            retries=self._retries,
+            backoff=self._backoff,
+        )
 
     def __repr__(self) -> str:
         """Show the symbol."""
@@ -60,7 +84,7 @@ class Ticker:
         reports them, unadjusted, with Yahoo's own ``adj_close`` alongside.
         """
         params = _chart.build_params(period=period, interval=interval, start=start, end=end, prepost=prepost)
-        result = _http.get_chart(self.symbol, params, session=self._session)
+        result = self._get(params)
         return self._parse(_chart.parse_prices, result, interval)
 
     @cached_property
@@ -73,7 +97,7 @@ class Ticker:
         request; create a new ``Ticker`` to refetch.
         """
         params = _chart.build_params(period="max", interval="3mo")
-        return _http.get_chart(self.symbol, params, session=self._session)
+        return self._get(params)
 
     def dividends(self) -> pl.DataFrame:
         """Return the full dividend history: ``ticker, date, dividend``."""

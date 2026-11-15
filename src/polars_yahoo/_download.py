@@ -61,6 +61,9 @@ def download(
     max_workers: int = 8,
     raise_errors: bool = False,
     session: _http.Session | None = None,
+    timeout: float = _http.TIMEOUT,
+    retries: int = _http.RETRIES,
+    backoff: float = _http.BACKOFF,
 ) -> pl.DataFrame:
     """Download bars for several symbols into one long frame.
 
@@ -72,6 +75,8 @@ def download(
     A symbol that fails is skipped with a warning, or raised when
     ``raise_errors`` is true. Passing ``session`` runs the requests one after
     another, because a single session must not be shared across threads.
+    ``timeout``, ``retries`` and ``backoff`` apply to every request, as for
+    :class:`Ticker`.
     """
     symbols = _normalise(tickers)
     if not symbols:
@@ -82,7 +87,8 @@ def download(
     def fetch(symbol: str) -> pl.DataFrame | YahooError:
         """Fetch one symbol, returning the error instead of raising so other symbols still complete."""
         try:
-            return Ticker(symbol, session=session).history(period, interval, start, end, prepost)
+            ticker = Ticker(symbol, session=session, timeout=timeout, retries=retries, backoff=backoff)
+            return ticker.history(period, interval, start, end, prepost)
         except YahooError as exc:
             return exc
 

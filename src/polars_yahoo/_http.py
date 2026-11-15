@@ -18,6 +18,11 @@ from .exceptions import NetworkError, RateLimitError, ResponseError, TickerNotFo
 
 CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
 
+# Request defaults, shared with Ticker and download so the three cannot drift apart.
+TIMEOUT = 30.0
+RETRIES = 3
+BACKOFF = 1.0
+
 _local = threading.local()
 
 
@@ -100,9 +105,9 @@ def get_chart(
     params: dict[str, Any],
     *,
     session: Session | None = None,
-    timeout: float = 30.0,
-    retries: int = 3,
-    backoff: float = 1.0,
+    timeout: float = TIMEOUT,
+    retries: int = RETRIES,
+    backoff: float = BACKOFF,
 ) -> dict[str, Any]:
     """Fetch ``/v8/finance/chart/{ticker}`` and return its single ``result`` object.
 
