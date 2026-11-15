@@ -13,7 +13,7 @@ from typing import Any, Protocol
 
 from curl_cffi import requests as _requests
 
-from .exceptions import RateLimitError, ResponseError, TickerNotFoundError
+from .exceptions import NetworkError, RateLimitError, ResponseError, TickerNotFoundError
 
 CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
 
@@ -59,12 +59,16 @@ def get_chart(
     """Fetch ``/v8/finance/chart/{ticker}`` and return its single ``result`` object.
 
     Retries HTTP 429 with exponential backoff, then raises :class:`RateLimitError`.
-    Raises :class:`TickerNotFoundError` when Yahoo reports no data for the symbol.
+    Raises :class:`TickerNotFoundError` when Yahoo reports no data for the symbol,
+    and :class:`NetworkError` when no HTTP response arrives at all.
     """
     session = session or default_session()
     url = CHART_URL.format(ticker=ticker)
     for attempt in range(retries + 1):
-        response = session.get(url, params=params, timeout=timeout)
+        try:
+            response = session.get(url, params=params, timeout=timeout)
+        except OSError as exc:  # curl_cffi's RequestException is an OSError
+            raise NetworkError(ticker, str(exc)) from exc
         if response.status_code != 429:
             break
         if attempt < retries:

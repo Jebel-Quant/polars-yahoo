@@ -54,6 +54,16 @@ class TestHttp:
             _http.get_chart("AAPL", {}, session=session)
         assert not isinstance(info.value, yh.TickerNotFoundError)
 
+    def test_transport_error_is_a_network_error(self):
+        """A request that never gets a response raises NetworkError, chained to the cause."""
+        cause = OSError("Connection timed out")
+        session = FakeSession({"AAPL": cause})
+        with pytest.raises(yh.NetworkError, match="Connection timed out") as info:
+            _http.get_chart("AAPL", {}, session=session)
+        assert isinstance(info.value, yh.YahooError)
+        assert info.value.ticker == "AAPL"
+        assert info.value.__cause__ is cause
+
     def test_default_session_is_per_thread(self):
         """Each thread gets its own reused session."""
         import threading
@@ -115,6 +125,13 @@ class TestDownload:
         session = FakeSession({"AAPL": chart_payload([JAN2]), "NOPE": FakeResponse(404, NOT_FOUND)})
         with pytest.warns(UserWarning, match="skipping NOPE"):
             df = yh.download(["AAPL", "NOPE"], session=session)
+        assert df["ticker"].unique().to_list() == ["AAPL"]
+
+    def test_network_failure_warns_and_skips(self):
+        """A symbol whose request fails at the transport level is skipped, not fatal."""
+        session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": OSError("Connection reset")})
+        with pytest.warns(UserWarning, match="skipping MSFT: MSFT: network error"):
+            df = yh.download(["AAPL", "MSFT"], session=session)
         assert df["ticker"].unique().to_list() == ["AAPL"]
 
     def test_failure_raises_when_asked(self):
