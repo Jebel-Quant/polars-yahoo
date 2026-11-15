@@ -10,11 +10,12 @@ from __future__ import annotations
 from ._chart import INTERVALS, PERIODS
 from ._download import download
 from ._ticker import Ticker
-from .exceptions import RateLimitError, ResponseError, TickerNotFoundError, YahooError
+from .exceptions import NetworkError, RateLimitError, ResponseError, TickerNotFoundError, YahooError
 
 __all__ = [
     "INTERVALS",
     "PERIODS",
+    "NetworkError",
     "RateLimitError",
     "ResponseError",
     "Ticker",

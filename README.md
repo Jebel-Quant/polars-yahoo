@@ -90,7 +90,8 @@ print(adjusted.row(0))
 
 All errors subclass `polars_yahoo.YahooError`:
 `TickerNotFoundError` (unknown or delisted symbol), `RateLimitError`
-(HTTP 429 persisted after retries with exponential backoff) and
+(HTTP 429 persisted after retries with exponential backoff), `NetworkError`
+(no HTTP response at all: timeout, DNS or connection failure; carries `reason`) and
 `ResponseError` (any other unusable response; carries `status` and `reason`).
 `download` skips failing symbols with a warning unless `raise_errors=True`.
 

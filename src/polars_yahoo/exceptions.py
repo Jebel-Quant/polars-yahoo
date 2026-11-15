@@ -27,6 +27,16 @@ class RateLimitError(YahooError):
         super().__init__(f"{ticker}: Yahoo rate limit (HTTP 429) persisted after {retries} retries")
 
 
+class NetworkError(YahooError):
+    """The request never got an HTTP response (timeout, DNS or connection failure)."""
+
+    def __init__(self, ticker: str, reason: str) -> None:
+        """Record the ticker and the transport error's message."""
+        self.ticker = ticker
+        self.reason = reason
+        super().__init__(f"{ticker}: network error: {reason}")
+
+
 class ResponseError(YahooError):
     """Yahoo answered with something other than usable chart data."""
 

@@ -95,6 +95,8 @@ class FakeSession:
         route = self.routes[ticker]
         if isinstance(route, list):
             route = route.pop(0)
+        if isinstance(route, Exception):
+            raise route
         if isinstance(route, FakeResponse):
             return route
         return FakeResponse(200, route)
