@@ -114,6 +114,24 @@ def build_params(
     return params
 
 
+def time_column(interval: str) -> str:
+    """Name the time column a price frame for ``interval`` carries.
+
+    >>> time_column("5m"), time_column("1d")
+    ('timestamp', 'date')
+    """
+    return "timestamp" if is_intraday(interval) else "date"
+
+
+def empty_prices(interval: str) -> pl.DataFrame:
+    """Return an empty price frame for ``interval``, intraday timestamps in UTC.
+
+    >>> empty_prices("1d").columns
+    ['ticker', 'date', 'open', 'high', 'low', 'close', 'adj_close', 'volume']
+    """
+    return pl.DataFrame(schema=_price_schema(is_intraday(interval), "UTC"))
+
+
 def _price_schema(intraday: bool, tz: str) -> dict[str, pl.DataType]:
     """Return the price-frame schema: ``date`` for daily bars, a tz-aware ``timestamp`` for intraday."""
     time_col: dict[str, pl.DataType] = (
@@ -201,8 +219,7 @@ def parse_prices(ticker: str, result: dict[str, Any], interval: str) -> pl.DataF
             .drop("timestamp")
             .unique(subset="date", keep="last", maintain_order=True)
         )
-    time_col = "timestamp" if intraday else "date"
-    return frame.select(list(schema)).sort(time_col)
+    return frame.select(list(schema)).sort(time_column(interval))
 
 
 def parse_dividends(ticker: str, result: dict[str, Any]) -> pl.DataFrame:

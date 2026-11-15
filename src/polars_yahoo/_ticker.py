@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from functools import cached_property
+from typing import Any
+
 import polars as pl
 
 from . import _chart, _http
@@ -45,19 +48,22 @@ class Ticker:
         result = _http.get_chart(self.symbol, params, session=self._session)
         return _chart.parse_prices(self.symbol, result, interval)
 
-    def _events(self) -> dict:
+    @cached_property
+    def _events(self) -> dict[str, Any]:
         """Fetch the full-history chart result that carries dividends and splits.
 
         Yahoo returns every event in range whatever the interval, so the
-        coarsest bars are requested to keep the payload small.
+        coarsest bars are requested to keep the payload small. The result is
+        cached on the instance, so ``dividends()`` and ``splits()`` share one
+        request; create a new ``Ticker`` to refetch.
         """
         params = _chart.build_params(period="max", interval="3mo")
         return _http.get_chart(self.symbol, params, session=self._session)
 
     def dividends(self) -> pl.DataFrame:
         """Return the full dividend history: ``ticker, date, dividend``."""
-        return _chart.parse_dividends(self.symbol, self._events())
+        return _chart.parse_dividends(self.symbol, self._events)
 
     def splits(self) -> pl.DataFrame:
         """Return the full split history: ``ticker, date, numerator, denominator, ratio``."""
-        return _chart.parse_splits(self.symbol, self._events())
+        return _chart.parse_splits(self.symbol, self._events)
