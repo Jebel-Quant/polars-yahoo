@@ -85,6 +85,9 @@ print(adjusted.row(0))
   intraday data goes (about 7 days for `1m`, 60 days for other minute bars, 730 days for hourly).
 - `start` / `end`: `date`, `datetime` or ISO string. Naive values are UTC; `end` is exclusive.
 - `prepost`: include pre- and post-market bars (intraday only).
+- `timeout`, `retries`, `backoff` (keyword-only, on `Ticker(...)` and `download`): seconds
+  to wait for each response (default `30`); how many times an HTTP 429 is retried (default `3`);
+  and the base wait between retries, doubled each time (default `1` second).
 
 ## Errors
 

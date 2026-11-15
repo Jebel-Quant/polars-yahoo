@@ -88,11 +88,13 @@ class FakeSession:
 
     routes: dict[str, Any]
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    timeouts: list[float] = field(default_factory=list)
 
     def get(self, url: str, *, params: dict[str, Any], timeout: float) -> FakeResponse:
         """Record the call and return the next canned response for the ticker in the URL."""
         ticker = unquote(url.rsplit("/", 1)[-1])
         self.calls.append((ticker, params))
+        self.timeouts.append(timeout)
         route = self.routes[ticker]
         if isinstance(route, list):
             route = route.pop(0)

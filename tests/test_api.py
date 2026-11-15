@@ -172,6 +172,17 @@ class TestTicker:
         assert info.value.status == 200
         assert info.value.__cause__ is not None
 
+    def test_request_settings_reach_the_http_layer(self, monkeypatch):
+        """timeout, retries and backoff given to Ticker are used for its requests."""
+        sleeps: list[float] = []
+        monkeypatch.setattr(_http.time, "sleep", sleeps.append)
+        session = FakeSession({"AAPL": [FakeResponse(429, {})] * 5 + [chart_payload([JAN2])]})
+        ticker = yh.Ticker("AAPL", session=session, timeout=5.0, retries=5, backoff=0.1)
+        assert ticker.history().height == 1  # the default of 3 retries would have given up
+        assert len(session.calls) == 6
+        assert sleeps == pytest.approx([0.1, 0.2, 0.4, 0.8, 1.6])
+        assert session.timeouts == [5.0] * 6
+
     def test_dividends_and_splits_use_full_range(self):
         """Corporate actions are fetched over the full history."""
         events = {"dividends": {"1": {"amount": 0.5, "date": JAN2}}}
@@ -206,6 +217,18 @@ class TestDownload:
         monkeypatch.setattr(_http, "default_session", lambda: session)
         df = yh.download(["AAPL", "MSFT"], max_workers=4)
         assert sorted(df["ticker"].to_list()) == ["AAPL", "MSFT"]
+
+    def test_request_settings_reach_every_symbol(self, monkeypatch):
+        """timeout, retries and backoff given to download() are used for every symbol."""
+        monkeypatch.setattr(_http.time, "sleep", lambda s: None)
+        throttled = [FakeResponse(429, {})] * 5
+        session = FakeSession(
+            {"AAPL": [*throttled, chart_payload([JAN2])], "MSFT": [*throttled, chart_payload([JAN3])]}
+        )
+        df = yh.download(["AAPL", "MSFT"], session=session, timeout=5.0, retries=5, backoff=0.0)
+        assert sorted(df["ticker"].unique().to_list()) == ["AAPL", "MSFT"]
+        assert len(session.calls) == 12
+        assert set(session.timeouts) == {5.0}
 
     def test_failure_warns_and_skips(self):
         """A failing symbol is skipped with a warning."""
