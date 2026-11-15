@@ -69,6 +69,8 @@ print(adjusted.row(0))
 ## Arguments
 
 - `period`: `1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max` (ignored when `start` is given)
+  `max` is sent to Yahoo as a window starting 1900-01-01, because for `range=max` Yahoo
+  returns monthly bars whatever the interval; it is rejected for intraday intervals.
 - `interval`: `1m 2m 5m 15m 60m 90m 1h 1d 5d 1wk 1mo 3mo`. Yahoo caps how far back
   intraday data goes (about 7 days for `1m`, 60 days for other minute bars, 730 days for hourly).
 - `start` / `end`: `date`, `datetime` or ISO string. Naive values are UTC; `end` is exclusive.
