@@ -28,6 +28,16 @@ RETRIES = 3
 BACKOFF = 1.0
 
 
+def check_request_settings(timeout: float, retries: int, backoff: float) -> None:
+    """Raise ValueError unless ``timeout > 0``, ``retries >= 0`` and ``backoff >= 0``."""
+    if not timeout > 0:
+        raise ValueError(f"timeout must be positive, got {timeout!r}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+    if retries < 0:
+        raise ValueError(f"retries must not be negative, got {retries!r}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+    if not backoff >= 0:
+        raise ValueError(f"backoff must not be negative, got {backoff!r}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+
+
 class Response(Protocol):
     """The subset of a response object this package relies on."""
 

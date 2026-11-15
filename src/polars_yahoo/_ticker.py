@@ -38,6 +38,7 @@ class Ticker:
         symbol = symbol.strip().upper()
         if not symbol:
             raise ValueError("symbol must not be empty")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+        _http.check_request_settings(timeout, retries, backoff)
         self.symbol = symbol
         self._session = session
         self._timeout = timeout

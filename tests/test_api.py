@@ -235,6 +235,22 @@ class TestTicker:
         assert sleeps == pytest.approx([0.1, 0.2, 0.4, 0.8, 1.6])
         assert session.timeouts == [5.0] * 6
 
+    @pytest.mark.parametrize(
+        ("setting", "match"),
+        [
+            ({"timeout": 0}, "timeout must be positive"),
+            ({"timeout": -1.0}, "timeout must be positive"),
+            ({"retries": -1}, "retries must not be negative"),
+            ({"backoff": -1.0}, "backoff must not be negative"),
+        ],
+    )
+    def test_rejects_invalid_request_settings(self, setting, match):
+        """Invalid timeout, retries or backoff raise ValueError before any request."""
+        session = FakeSession({"AAPL": chart_payload([JAN2])})
+        with pytest.raises(ValueError, match=match):
+            yh.Ticker("AAPL", session=session, **setting)
+        assert session.calls == []
+
     def test_dividends_and_splits_use_full_range(self):
         """Corporate actions are fetched over the full history."""
         events = {"dividends": {"1": {"amount": 0.5, "date": JAN2}}}
@@ -294,6 +310,21 @@ class TestDownload:
         assert sorted(df["ticker"].unique().to_list()) == ["AAPL", "MSFT"]
         assert len(session.calls) == 12
         assert set(session.timeouts) == {5.0}
+
+    @pytest.mark.parametrize(
+        ("setting", "match"),
+        [
+            ({"timeout": 0}, "timeout must be positive"),
+            ({"retries": -1}, "retries must not be negative"),
+            ({"backoff": -1.0}, "backoff must not be negative"),
+        ],
+    )
+    def test_rejects_invalid_request_settings(self, setting, match):
+        """Invalid settings fail up front, before any symbol is requested."""
+        session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": [FakeResponse(429, {}), chart_payload([JAN3])]})
+        with pytest.raises(ValueError, match=match):
+            yh.download(["AAPL", "MSFT"], session=session, **setting)
+        assert session.calls == []
 
     def test_failure_warns_and_skips(self):
         """A failing symbol is skipped with a warning."""
