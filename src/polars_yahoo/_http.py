@@ -63,6 +63,17 @@ def _send(
     raise RateLimitError(ticker, retries)
 
 
+_MALFORMED = "malformed chart payload"
+
+
+def _first_result(ticker: str, status: int, results: Any) -> dict[str, Any]:
+    """Return the first chart ``result``, or raise ResponseError when it is not an object."""
+    result = results[0] if isinstance(results, list) else None
+    if not isinstance(result, dict):
+        raise ResponseError(ticker, status, _MALFORMED)
+    return result
+
+
 def _decode(ticker: str, response: Response) -> dict[str, Any]:
     """Return the single chart ``result`` from ``response``, or raise the matching YahooError."""
     try:
@@ -70,11 +81,13 @@ def _decode(ticker: str, response: Response) -> dict[str, Any]:
     except ValueError as exc:
         raise ResponseError(ticker, response.status_code, "body is not JSON") from exc
 
-    chart = payload.get("chart") or {}
+    chart = (payload.get("chart") or {}) if isinstance(payload, dict) else None
+    if not isinstance(chart, dict):
+        raise ResponseError(ticker, response.status_code, _MALFORMED)
     error = chart.get("error")
     results = chart.get("result")
     if results and not error:
-        return results[0]
+        return _first_result(ticker, response.status_code, results)
     reason = (error or {}).get("description")
     if response.status_code in (200, 404):
         raise TickerNotFoundError(ticker, reason)
