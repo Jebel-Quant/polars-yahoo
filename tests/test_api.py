@@ -102,6 +102,14 @@ class TestTicker:
         assert ticker.splits().is_empty()
         assert all(params["range"] == "max" for _, params in session.calls)
 
+    def test_dividends_and_splits_share_one_request(self):
+        """The full-history events payload is fetched once per Ticker."""
+        session = FakeSession({"AAPL": chart_payload([JAN2])})
+        ticker = yh.Ticker("AAPL", session=session)
+        ticker.dividends()
+        ticker.splits()
+        assert len(session.calls) == 1
+
 
 class TestDownload:
     """The multi-symbol download API."""

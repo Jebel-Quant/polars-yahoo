@@ -41,14 +41,13 @@ def _stack(frames: list[pl.DataFrame], interval: str) -> pl.DataFrame:
     Intraday frames on different time zones are converted to UTC first, since a
     polars column holds a single time zone.
     """
-    intraday = _chart.is_intraday(interval)
     if not frames:
-        return pl.DataFrame(schema=_chart._price_schema(intraday, "UTC"))
-    if intraday:
+        return _chart.empty_prices(interval)
+    if _chart.is_intraday(interval):
         zones = {dtype.time_zone for f in frames if isinstance(dtype := f.schema["timestamp"], pl.Datetime)}
         if len(zones) > 1:
             frames = [f.with_columns(pl.col("timestamp").dt.convert_time_zone("UTC")) for f in frames]
-    return pl.concat(frames, how="vertical").sort("ticker", "timestamp" if intraday else "date")
+    return pl.concat(frames, how="vertical").sort("ticker", _chart.time_column(interval))
 
 
 def download(
