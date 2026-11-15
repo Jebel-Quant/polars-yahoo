@@ -25,7 +25,11 @@ DateLike = dt.date | dt.datetime | str
 
 
 def is_intraday(interval: str) -> bool:
-    """Return True for minute/hour bars, which carry a timestamp rather than a date."""
+    """Return True for minute/hour bars, which carry a timestamp rather than a date.
+
+    >>> is_intraday("5m"), is_intraday("1d")
+    (True, False)
+    """
     return interval in INTRADAY_INTERVALS
 
 
@@ -33,6 +37,9 @@ def _to_epoch(value: DateLike) -> int:
     """Convert a date, datetime or ISO string to Unix seconds.
 
     Naive values are taken as UTC; a bare date means midnight UTC.
+
+    >>> _to_epoch("2024-01-02")
+    1704153600
     """
     if isinstance(value, str):
         value = dt.datetime.fromisoformat(value)
@@ -55,6 +62,12 @@ def build_params(
 
     Either ``period`` or ``start`` (optionally with ``end``) selects the range;
     ``start``/``end`` win, and ``end`` defaults to now. ``end`` is exclusive.
+
+    >>> build_params(period="5d")["range"]
+    '5d'
+    >>> params = build_params(period="max")  # sent as an explicit window, not range=max
+    >>> params["period1"], "range" in params
+    (-2208988800, False)
     """
     if interval not in INTERVALS:
         hint = " (Yahoo returns unreliable 30m bars; use 15m)" if interval == "30m" else ""
@@ -121,6 +134,22 @@ def parse_prices(ticker: str, result: dict[str, Any], interval: str) -> pl.DataF
     intraday bars because Yahoo does not provide it there. Rows with no prices
     at all are dropped, and for daily bars a duplicated trailing live bar is
     collapsed into one row per date.
+
+    >>> result = {
+    ...     "meta": {"exchangeTimezoneName": "America/New_York"},
+    ...     "timestamp": [1704205800],
+    ...     "indicators": {
+    ...         "quote": [
+    ...             {"open": [187.15], "high": [188.44], "low": [183.89], "close": [185.64], "volume": [82488700]}
+    ...         ],
+    ...         "adjclose": [{"adjclose": [184.73]}],
+    ...     },
+    ... }
+    >>> frame = parse_prices("AAPL", result, "1d")
+    >>> frame.columns
+    ['ticker', 'date', 'open', 'high', 'low', 'close', 'adj_close', 'volume']
+    >>> frame.row(0)
+    ('AAPL', datetime.date(2024, 1, 2), 187.15, 188.44, 183.89, 185.64, 184.73, 82488700)
     """
     meta = result.get("meta") or {}
     tz = meta.get("exchangeTimezoneName") or "UTC"
@@ -165,7 +194,12 @@ def parse_prices(ticker: str, result: dict[str, Any], interval: str) -> pl.DataF
 
 
 def parse_dividends(ticker: str, result: dict[str, Any]) -> pl.DataFrame:
-    """Return ``ticker, date, dividend`` rows from a chart ``result``'s events."""
+    """Return ``ticker, date, dividend`` rows from a chart ``result``'s events.
+
+    >>> events = {"dividends": {"1715347800": {"date": 1715347800, "amount": 0.25}}}
+    >>> parse_dividends("AAPL", {"meta": {"exchangeTimezoneName": "America/New_York"}, "events": events}).row(0)
+    ('AAPL', datetime.date(2024, 5, 10), 0.25)
+    """
     tz = (result.get("meta") or {}).get("exchangeTimezoneName") or "UTC"
     events = list(((result.get("events") or {}).get("dividends") or {}).values())
     schema = {"ticker": pl.String(), "date": pl.Date(), "dividend": pl.Float64()}
@@ -182,7 +216,12 @@ def parse_dividends(ticker: str, result: dict[str, Any]) -> pl.DataFrame:
 
 
 def parse_splits(ticker: str, result: dict[str, Any]) -> pl.DataFrame:
-    """Return ``ticker, date, numerator, denominator, ratio`` rows from a chart ``result``."""
+    """Return ``ticker, date, numerator, denominator, ratio`` rows from a chart ``result``.
+
+    >>> events = {"splits": {"1598880600": {"date": 1598880600, "numerator": 4, "denominator": 1}}}
+    >>> parse_splits("AAPL", {"meta": {"exchangeTimezoneName": "America/New_York"}, "events": events}).row(0)
+    ('AAPL', datetime.date(2020, 8, 31), 4.0, 1.0, 4.0)
+    """
     tz = (result.get("meta") or {}).get("exchangeTimezoneName") or "UTC"
     events = list(((result.get("events") or {}).get("splits") or {}).values())
     schema = {
