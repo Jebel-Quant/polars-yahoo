@@ -50,6 +50,37 @@ def _to_epoch(value: DateLike) -> int:
     return int(value.timestamp())
 
 
+def _now() -> int:
+    """Return the current time as Unix seconds."""
+    return int(dt.datetime.now(dt.UTC).timestamp())
+
+
+def _window(start: DateLike, end: DateLike | None) -> dict[str, int]:
+    """Return an explicit ``period1``/``period2`` window; ``end`` defaults to now."""
+    period1 = _to_epoch(start)
+    period2 = _to_epoch(end) if end is not None else _now()
+    if period2 <= period1:
+        raise ValueError("end must be after start")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+    return {"period1": period1, "period2": period2}
+
+
+def _period_range(period: str | None, interval: str, end: DateLike | None) -> dict[str, Any]:
+    """Translate a named ``period`` into query parameters (used when no ``start`` is given)."""
+    if end is not None:
+        raise ValueError("end requires start")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+    if period not in PERIODS:
+        raise ValueError(f"period must be one of {', '.join(PERIODS)}, got {period!r}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+    if period != "max" or interval in ("1mo", "3mo"):
+        return {"range": period}
+    # For range=max Yahoo returns monthly bars, so send an explicit window instead.
+    if is_intraday(interval):
+        raise ValueError(  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+            f"period='max' is not available for intraday interval {interval!r}; "
+            "Yahoo only keeps recent intraday bars, so pass a shorter period or a start"
+        )
+    return {"period1": MAX_START, "period2": _now()}
+
+
 def build_params(
     *,
     period: str | None = "1mo",
@@ -79,26 +110,7 @@ def build_params(
         "events": "div,splits",
         "includeAdjustedClose": "true",
     }
-    if start is not None:
-        params["period1"] = _to_epoch(start)
-        params["period2"] = _to_epoch(end) if end is not None else int(dt.datetime.now(dt.UTC).timestamp())
-        if params["period2"] <= params["period1"]:
-            raise ValueError("end must be after start")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
-    elif end is not None:
-        raise ValueError("end requires start")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
-    else:
-        if period not in PERIODS:
-            raise ValueError(f"period must be one of {', '.join(PERIODS)}, got {period!r}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
-        if period == "max" and interval not in ("1mo", "3mo"):
-            if is_intraday(interval):
-                raise ValueError(  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
-                    f"period='max' is not available for intraday interval {interval!r}; "
-                    "Yahoo only keeps recent intraday bars, so pass a shorter period or a start"
-                )
-            params["period1"] = MAX_START
-            params["period2"] = int(dt.datetime.now(dt.UTC).timestamp())
-        else:
-            params["range"] = period
+    params.update(_window(start, end) if start is not None else _period_range(period, interval, end))
     return params
 
 
