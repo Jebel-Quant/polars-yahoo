@@ -12,6 +12,25 @@ JAN2, JAN3, JAN4, JAN5 = 1704205800, 1704292200, 1704378600, 1704465000
 JAN4_LIVE = 1704398400  # 15:00 New York, same calendar day as JAN4
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the ``live`` marker (the template's pytest.ini owns the marker list)."""
+    config.addinivalue_line("markers", "live: hits Yahoo over the network (skipped unless selected with -m live)")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip ``live`` tests unless the run explicitly selects them with ``-m live``.
+
+    The default suite, and therefore CI, must never depend on Yahoo being reachable.
+    """
+    markexpr = config.getoption("markexpr") or ""
+    if "live" in markexpr and "not live" not in markexpr:
+        return
+    skip = pytest.mark.skip(reason="hits Yahoo; run with -m live")
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip)
+
+
 def chart_payload(
     timestamps: list[int],
     *,
