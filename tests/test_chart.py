@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 from conftest import JAN2, JAN3, JAN4, JAN4_LIVE, JAN5, chart_payload
 
-from polars_yahoo._chart import build_params, parse_dividends, parse_prices, parse_splits
+from polars_yahoo._chart import MAX_START, build_params, parse_dividends, parse_prices, parse_splits
 
 
 def result(payload):
@@ -38,6 +38,19 @@ class TestBuildParams:
         start = dt.datetime(2024, 1, 1, 1, tzinfo=dt.timezone(dt.timedelta(hours=1)))
         assert build_params(start=start, end="2024-01-02")["period1"] == 1704067200
 
+    @pytest.mark.parametrize("interval", ["1d", "5d", "1wk"])
+    def test_max_is_an_explicit_window(self, interval):
+        """period='max' is sent as period1/period2: for range=max Yahoo returns monthly bars."""
+        p = build_params(period="max", interval=interval)
+        assert "range" not in p
+        assert p["period1"] == MAX_START == int(dt.datetime(1900, 1, 1, tzinfo=dt.UTC).timestamp())
+        assert p["period2"] > 0
+
+    @pytest.mark.parametrize("interval", ["1mo", "3mo"])
+    def test_max_stays_a_range_for_monthly_bars(self, interval):
+        """Monthly and quarterly bars are what range=max returns anyway."""
+        assert build_params(period="max", interval=interval)["range"] == "max"
+
     def test_start_without_end_runs_to_now(self):
         """A missing end defaults to the current time."""
         p = build_params(start="2024-01-01")
@@ -49,6 +62,7 @@ class TestBuildParams:
             ({"interval": "30m"}, "15m"),
             ({"interval": "2h"}, "interval must be"),
             ({"period": "7d"}, "period must be"),
+            ({"period": "max", "interval": "1h"}, "not available for intraday"),
             ({"end": "2024-01-01"}, "end requires start"),
             ({"start": "2024-01-02", "end": "2024-01-01"}, "after start"),
         ],

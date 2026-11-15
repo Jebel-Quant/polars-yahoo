@@ -15,6 +15,10 @@ INTRADAY_INTERVALS = ("1m", "2m", "5m", "15m", "60m", "90m", "1h")
 DAILY_INTERVALS = ("1d", "5d", "1wk", "1mo", "3mo")
 INTERVALS = INTRADAY_INTERVALS + DAILY_INTERVALS
 
+# For range=max Yahoo silently returns monthly bars whatever interval was asked
+# for, so "max" is sent as an explicit window starting here (1900-01-01 UTC).
+MAX_START = -2208988800
+
 PRICE_COLUMNS = ("open", "high", "low", "close", "adj_close")
 
 DateLike = dt.date | dt.datetime | str
@@ -72,7 +76,16 @@ def build_params(
     else:
         if period not in PERIODS:
             raise ValueError(f"period must be one of {', '.join(PERIODS)}, got {period!r}")  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
-        params["range"] = period
+        if period == "max" and interval not in ("1mo", "3mo"):
+            if is_intraday(interval):
+                raise ValueError(  # noqa: TRY003 - argument validation; a ValueError with context is the idiom
+                    f"period='max' is not available for intraday interval {interval!r}; "
+                    "Yahoo only keeps recent intraday bars, so pass a shorter period or a start"
+                )
+            params["period1"] = MAX_START
+            params["period2"] = int(dt.datetime.now(dt.UTC).timestamp())
+        else:
+            params["range"] = period
     return params
 
 
