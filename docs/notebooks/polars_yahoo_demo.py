@@ -51,7 +51,7 @@ def _(mo, yh):
         5. Several symbols with `download`, including mixed time zones
         6. An interactive explorer
         7. Errors: what is raised, what is skipped, what is rejected up front
-        8. Request settings and bringing your own session
+        8. Request settings, retries and bringing your own session
 
         Every cell here hits Yahoo live, so the numbers change from run to run.
         This package is not affiliated with Yahoo, so check Yahoo's terms before
@@ -368,8 +368,11 @@ def _(mo, pl, warnings, yh):
                 |---|---|
                 | `TickerNotFoundError` | unknown or delisted symbol |
                 | `RateLimitError` | HTTP 429 persisted after retries with exponential backoff |
-                | `NetworkError` | no HTTP response at all: timeout, DNS or connection failure |
-                | `ResponseError` | any other unusable response, including malformed chart data |
+                | `NetworkError` | no HTTP response at all, after retries: timeout, DNS or connection failure |
+                | `ResponseError` | any other unusable response: a 5xx after retries, or malformed chart data |
+
+                HTTP 429, any 5xx and transport failures are retried before an error is
+                raised (see section 8). Anything else, such as an unknown symbol, fails at once.
 
                 ### `download` skips a failing symbol and keeps the rest
 
@@ -392,7 +395,10 @@ def _(mo, yh):
             'download(["AAPL", "NOSUCHTICKER123"], raise_errors=True)',
             lambda: yh.download(["AAPL", "NOSUCHTICKER123"], raise_errors=True),
         ),
-        ('Ticker("AAPL", timeout=0.001).history()', lambda: yh.Ticker("AAPL", timeout=0.001).history()),
+        (
+            'Ticker("AAPL", timeout=0.001, retries=0).history()',
+            lambda: yh.Ticker("AAPL", timeout=0.001, retries=0).history(),
+        ),
     ]:
         try:
             _call()
@@ -406,7 +412,9 @@ def _(mo, yh):
                 ### Raising instead
 
                 A single `Ticker` raises. So does `download(..., raise_errors=True)`.
-                A one-millisecond timeout shows what a transport failure looks like:
+                A one-millisecond timeout shows what a transport failure looks like.
+                It is retried like any transport failure, so `retries=0` makes it fail
+                straight away instead of after three retries:
                 """
             ),
             mo.ui.table(_outcomes, selection=None),
@@ -451,7 +459,7 @@ def _(mo, yh):
 
 
 @app.cell
-def _():
+def _(yh):
     from curl_cffi import requests as curl_requests
 
     class RecordingSession:
@@ -462,7 +470,7 @@ def _():
             self._inner = curl_requests.Session(impersonate="chrome")
             self.log: list[dict] = []
 
-        def get(self, url: str, *, params: dict, timeout: float):
+        def get(self, url: str, *, params: dict, timeout: float) -> yh.Response:
             """Send the request, then note what was asked for and what came back."""
             response = self._inner.get(url, params=params, timeout=timeout)
             self.log.append({"symbol": url.rsplit("/", 1)[-1], **params, "status": response.status_code})
@@ -473,7 +481,7 @@ def _():
 
 @app.cell
 def _(RecordingSession, mo, pl, yh):
-    recorder = RecordingSession()
+    recorder: yh.Session = RecordingSession()
     _msft = yh.Ticker("MSFT", session=recorder, timeout=10.0, retries=5, backoff=0.5)
     _msft.history(period="max")
     _msft.dividends()
@@ -486,12 +494,15 @@ def _(RecordingSession, mo, pl, yh):
                 ## 8. Request settings and your own session
 
                 `Ticker` and `download` both take keyword-only `timeout` (seconds per
-                request, default 30), `retries` (how many times an HTTP 429 is retried,
-                default 3) and `backoff` (the base wait between retries, doubled each
-                time, default 1 second).
+                request, default 30), `retries` (how many times a failed request is
+                retried, default 3) and `backoff` (the base wait between retries,
+                doubled each time, default 1 second). HTTP 429, any 5xx and transport
+                failures are retried; other responses, such as a 404, are not.
 
                 They also accept `session=`: anything with a `requests`-style
-                `get(url, *, params, timeout)`. Without one, requests go through a
+                `get(url, *, params, timeout)`. That shape is exported as the
+                `yh.Session` protocol (its responses as `yh.Response`), so a type
+                checker can verify your own session. Without one, requests go through a
                 shared pool of browser-impersonating `curl_cffi` sessions that is
                 reused across calls and never lends one session to two threads.
                 Passing your own session makes `download` fetch one symbol after
@@ -512,6 +523,38 @@ def _(RecordingSession, mo, pl, yh):
                 - `download` with a session sent its two symbols one after the other.
                 """
             ),
+        ]
+    )
+    return
+
+
+@app.cell
+def _(RecordingSession, mo, pl, yh):
+    class FlakySession(RecordingSession):
+        """Fail the first request with a simulated connection reset, then behave normally."""
+
+        def get(self, url: str, *, params: dict, timeout: float) -> yh.Response:
+            """Raise once, as a dropped connection would, then delegate to the recording session."""
+            if not self.log:
+                self.log.append({"symbol": url.rsplit("/", 1)[-1], "status": None, "note": "connection reset"})
+                raise ConnectionResetError  # an OSError, like curl_cffi's transport errors
+            return super().get(url, params=params, timeout=timeout)
+
+    flaky = FlakySession()
+    _bars = yh.Ticker("AAPL", session=flaky, backoff=0.2).history(period="5d")
+    mo.vstack(
+        [
+            mo.md(
+                f"""
+                ### Retries in action
+
+                This session drops its first connection on purpose. `history()` waits
+                `backoff` (0.2 s here), tries again and gets its **{_bars.height}** bars,
+                so the caller never sees the failure. Only after `retries` failed retries
+                in a row would it raise `NetworkError`. The log shows both attempts:
+                """
+            ),
+            pl.DataFrame(flaky.log).select("symbol", "status", pl.col("note").fill_null("answered")),
         ]
     )
     return
