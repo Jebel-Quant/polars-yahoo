@@ -112,7 +112,7 @@ def _decode(ticker: str, response: Response) -> dict[str, Any]:
     except ValueError as exc:
         raise ResponseError(ticker, response.status_code, "body is not JSON") from exc
 
-    chart = (payload.get("chart") or {}) if isinstance(payload, dict) else None
+    chart = payload.get("chart") if isinstance(payload, dict) else None
     if not isinstance(chart, dict):
         raise ResponseError(ticker, response.status_code, _MALFORMED)
     error = chart.get("error")
