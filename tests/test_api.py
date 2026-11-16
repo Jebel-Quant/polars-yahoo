@@ -74,6 +74,14 @@ def session_factory(monkeypatch) -> _SessionFactory:
     return factory
 
 
+@pytest.fixture
+def backoff_sleeps(monkeypatch) -> list[float]:
+    """Record the retry waits instead of sleeping, so retried failures don't slow the suite."""
+    sleeps: list[float] = []
+    monkeypatch.setattr(_http.time, "sleep", sleeps.append)
+    return sleeps
+
+
 MALFORMED_RESULTS = pytest.mark.parametrize(
     "payload", [_quote_is_null(), _short_columns()], ids=["null-quote", "short"]
 )
@@ -100,6 +108,32 @@ class TestHttp:
         assert sleeps == [0.5, 1.0]
         assert info.value.retries == 2
 
+    @pytest.mark.parametrize(
+        "failure", [OSError("Connection reset"), FakeResponse(503, {})], ids=["transport", "http-503"]
+    )
+    def test_retries_transient_failure_then_succeeds(self, backoff_sleeps, failure):
+        """A transport error or a 5xx is retried like a 429, and the later success returned."""
+        session = FakeSession({"AAPL": [failure, chart_payload([JAN2])]})
+        assert _http.get_chart("AAPL", {}, session=session)["timestamp"] == [JAN2]
+        assert len(session.calls) == 2
+        assert backoff_sleeps == [_http.BACKOFF]
+
+    def test_gives_up_on_transport_errors_after_retries(self, backoff_sleeps):
+        """Persistent transport errors raise NetworkError after ``retries + 1`` attempts."""
+        session = FakeSession({"AAPL": OSError("Connection reset")})
+        with pytest.raises(yh.NetworkError, match="Connection reset"):
+            _http.get_chart("AAPL", {}, session=session, retries=2, backoff=0.5)
+        assert len(session.calls) == 3
+        assert backoff_sleeps == [0.5, 1.0]
+
+    def test_does_not_retry_other_client_errors(self, backoff_sleeps):
+        """A 4xx other than 429 is answered at once, with no retry."""
+        session = FakeSession({"NOPE": FakeResponse(404, NOT_FOUND)})
+        with pytest.raises(yh.TickerNotFoundError):
+            _http.get_chart("NOPE", {}, session=session)
+        assert len(session.calls) == 1
+        assert backoff_sleeps == []
+
     def test_not_found(self):
         """Yahoo's not-found error maps to TickerNotFoundError naming the ticker."""
         session = FakeSession({"NOPE": FakeResponse(404, NOT_FOUND)})
@@ -107,13 +141,13 @@ class TestHttp:
             _http.get_chart("NOPE", {}, session=session)
         assert info.value.ticker == "NOPE"
 
-    def test_non_json_body(self):
+    def test_non_json_body(self, backoff_sleeps):
         """A non-JSON body raises YahooError with the HTTP status."""
         session = FakeSession({"AAPL": FakeResponse(502, ValueError("not json"))})
         with pytest.raises(yh.YahooError, match="HTTP 502"):
             _http.get_chart("AAPL", {}, session=session)
 
-    def test_server_error_with_json_error(self):
+    def test_server_error_with_json_error(self, backoff_sleeps):
         """A 5xx with a JSON error is a YahooError, not a not-found."""
         session = FakeSession(
             {"AAPL": FakeResponse(500, {"chart": {"result": None, "error": {"description": "boom"}}})}
@@ -137,13 +171,13 @@ class TestHttp:
         with pytest.raises(yh.ResponseError, match="malformed chart payload"):
             _http.get_chart("AAPL", {}, session=session)
 
-    def test_error_that_is_not_an_object_is_a_response_error(self):
+    def test_error_that_is_not_an_object_is_a_response_error(self, backoff_sleeps):
         """A chart ``error`` that is a string, not an object, raises ResponseError, not AttributeError."""
         session = FakeSession({"AAPL": ERROR_IS_A_STRING})
         with pytest.raises(yh.ResponseError, match="HTTP 500: unexpected response"):
             _http.get_chart("AAPL", {}, session=session)
 
-    def test_transport_error_is_a_network_error(self):
+    def test_transport_error_is_a_network_error(self, backoff_sleeps):
         """A request that never gets a response raises NetworkError, chained to the cause."""
         cause = OSError("Connection timed out")
         session = FakeSession({"AAPL": cause})
@@ -333,7 +367,7 @@ class TestDownload:
             df = yh.download(["AAPL", "NOPE"], session=session)
         assert df["ticker"].unique().to_list() == ["AAPL"]
 
-    def test_network_failure_warns_and_skips(self):
+    def test_network_failure_warns_and_skips(self, backoff_sleeps):
         """A symbol whose request fails at the transport level is skipped, not fatal."""
         session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": OSError("Connection reset")})
         with pytest.warns(UserWarning, match="skipping MSFT: MSFT: network error"):
@@ -352,7 +386,7 @@ class TestDownload:
         [ERROR_IS_A_STRING, _quote_is_null(), _short_columns()],
         ids=["error-is-a-string", "null-quote", "short"],
     )
-    def test_malformed_result_warns_and_skips(self, response):
+    def test_malformed_result_warns_and_skips(self, backoff_sleeps, response):
         """A symbol whose chart data has the wrong shape is skipped, and the others are still returned."""
         session = FakeSession({"AAPL": chart_payload([JAN2]), "MSFT": response})
         with pytest.warns(UserWarning, match="skipping MSFT: MSFT: HTTP"):

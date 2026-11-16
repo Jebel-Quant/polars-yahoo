@@ -21,8 +21,9 @@ class Ticker:
 
     ``session`` lets you inject any object with a ``requests``-style ``get``;
     by default a browser-impersonating ``curl_cffi`` session is used.
-    ``timeout`` is in seconds per request; an HTTP 429 is retried up to
-    ``retries`` times, waiting ``backoff * 2**attempt`` seconds between tries.
+    ``timeout`` is in seconds per request; an HTTP 429, a 5xx or a transport
+    failure is retried up to ``retries`` times, waiting ``backoff * 2**attempt``
+    seconds between tries.
     """
 
     def __init__(
