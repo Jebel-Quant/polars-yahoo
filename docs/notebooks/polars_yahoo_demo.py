@@ -495,8 +495,10 @@ def _(RecordingSession, mo, pl, yh):
 
                 `Ticker` and `download` both take keyword-only `timeout` (seconds per
                 request, default 30), `retries` (how many times a failed request is
-                retried, default 3) and `backoff` (the base wait between retries,
-                doubled each time, default 1 second). HTTP 429, any 5xx and transport
+                retried, default 3) and `backoff` (the cap on the wait before the first
+                retry, default 1 second; the cap doubles each time and the actual wait is
+                random below it, so symbols that fail together don't retry in lockstep).
+                HTTP 429, any 5xx and transport
                 failures are retried; other responses, such as a 404, are not.
 
                 They also accept `session=`: anything with a `requests`-style
@@ -548,8 +550,9 @@ def _(RecordingSession, mo, pl, yh):
                 f"""
                 ### Retries in action
 
-                This session drops its first connection on purpose. `history()` waits
-                `backoff` (0.2 s here), tries again and gets its **{_bars.height}** bars,
+                This session drops its first connection on purpose. `history()` waits a
+                random time of at most `backoff` (0.2 s here), tries again and gets its
+                **{_bars.height}** bars,
                 so the caller never sees the failure. Only after `retries` failed retries
                 in a row would it raise `NetworkError`. The log shows both attempts:
                 """
