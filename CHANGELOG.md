@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com),
 and entries are generated from [Conventional Commits](https://www.conventionalcommits.org).
 
+## [0.3.1] - 2026-11-16
+
+### Bug Fixes
+- Raise ResponseError when a 200 response has no chart key (#40) (#43)
+- Export Session, Response and DateLike from polars_yahoo (#42) (#44)
+- Retry transport errors and 5xx responses like HTTP 429 (#41) (#45)
+- Add random jitter to the retry backoff (#47) (#48)
+
+### Documentation
+- Add a marimo notebook touring the full API (#39)
+- Update the notebook for retries and the exported Session type (#46)
+
+### Maintenance
+- Bump uv.lock with the version (#38)
+
 ## [0.3.0] - 2026-11-15
 
 ### Bug Fixes
