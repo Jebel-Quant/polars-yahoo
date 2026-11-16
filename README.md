@@ -87,7 +87,9 @@ print(adjusted.row(0))
 - `prepost`: include pre- and post-market bars (intraday only).
 - `timeout`, `retries`, `backoff` (keyword-only, on `Ticker(...)` and `download`): seconds
   to wait for each response (default `30`); how many times a failed request is retried
-  (default `3`); and the base wait between retries, doubled each time (default `1` second).
+  (default `3`); and the cap on the wait before the first retry (default `1` second). The
+  cap doubles with each retry, and each actual wait is random between 0 and the cap, so
+  symbols that fail together in `download` don't all retry at the same moment.
   Retried are HTTP 429, any 5xx, and transport failures (timeout, DNS or connection error);
   other responses, such as a 404, are not.
 

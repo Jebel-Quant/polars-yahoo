@@ -76,9 +76,14 @@ def session_factory(monkeypatch) -> _SessionFactory:
 
 @pytest.fixture
 def backoff_sleeps(monkeypatch) -> list[float]:
-    """Record the retry waits instead of sleeping, so retried failures don't slow the suite."""
+    """Record the retry waits instead of sleeping, so retried failures don't slow the suite.
+
+    The jitter is pinned to its cap, so each recorded wait is the cap for that retry
+    and the backoff schedule can be asserted exactly.
+    """
     sleeps: list[float] = []
     monkeypatch.setattr(_http.time, "sleep", sleeps.append)
+    monkeypatch.setattr(_http, "_jitter", lambda cap: cap)
     return sleeps
 
 
@@ -98,15 +103,25 @@ class TestHttp:
         assert _http.get_chart("AAPL", {}, session=session)["timestamp"] == [JAN2]
         assert len(session.calls) == 2
 
-    def test_gives_up_after_retries(self, monkeypatch):
+    def test_gives_up_after_retries(self, backoff_sleeps):
         """Persistent 429s raise RateLimitError after exponential backoff."""
-        sleeps = []
-        monkeypatch.setattr(_http.time, "sleep", sleeps.append)
         session = FakeSession({"AAPL": [FakeResponse(429, {})] * 3})
         with pytest.raises(yh.RateLimitError, match="after 2 retries") as info:
             _http.get_chart("AAPL", {}, session=session, retries=2, backoff=0.5)
-        assert sleeps == [0.5, 1.0]
+        assert backoff_sleeps == [0.5, 1.0]
         assert info.value.retries == 2
+
+    def test_retry_waits_are_jittered_within_their_cap(self, monkeypatch):
+        """Each wait is random between 0 and its doubling cap, so concurrent retries spread out."""
+        sleeps: list[float] = []
+        monkeypatch.setattr(_http.time, "sleep", sleeps.append)
+        session = FakeSession({"AAPL": [FakeResponse(429, {})] * 6})
+        with pytest.raises(yh.RateLimitError):
+            _http.get_chart("AAPL", {}, session=session, retries=5, backoff=0.5)
+        caps = [0.5, 1.0, 2.0, 4.0, 8.0]
+        assert len(sleeps) == len(caps)
+        assert all(0 <= wait <= cap for wait, cap in zip(sleeps, caps, strict=True))
+        assert sleeps != caps  # randomised, not the fixed schedule
 
     @pytest.mark.parametrize(
         "failure", [OSError("Connection reset"), FakeResponse(503, {})], ids=["transport", "http-503"]
@@ -258,10 +273,9 @@ class TestTicker:
         assert info.value.status == 200
         assert info.value.__cause__ is not None
 
-    def test_request_settings_reach_the_http_layer(self, monkeypatch):
+    def test_request_settings_reach_the_http_layer(self, backoff_sleeps):
         """timeout, retries and backoff given to Ticker are used for its requests."""
-        sleeps: list[float] = []
-        monkeypatch.setattr(_http.time, "sleep", sleeps.append)
+        sleeps = backoff_sleeps
         session = FakeSession({"AAPL": [FakeResponse(429, {})] * 5 + [chart_payload([JAN2])]})
         ticker = yh.Ticker("AAPL", session=session, timeout=5.0, retries=5, backoff=0.1)
         assert ticker.history().height == 1  # the default of 3 retries would have given up

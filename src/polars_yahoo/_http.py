@@ -10,6 +10,7 @@ means a ``curl_cffi`` session is never used by two threads at once.
 from __future__ import annotations
 
 import queue
+import random
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -78,17 +79,28 @@ def pooled_session() -> Iterator[Session]:
         _pool.put(session)
 
 
+def _jitter(cap: float) -> float:
+    """Return a random wait between 0 and ``cap`` seconds ("full jitter").
+
+    Randomising the wait keeps concurrent requests that failed together from all
+    retrying at the same moment. This is the one source of randomness, so tests can pin it.
+    """
+    # Not security-relevant: the randomness only spreads retries out in time.
+    return random.uniform(0, cap)  # noqa: S311  # nosec B311
+
+
 def _send(
     session: Session, url: str, params: dict[str, Any], ticker: str, timeout: float, retries: int, backoff: float
 ) -> Response:
-    """Issue the GET, retrying HTTP 429, 5xx and transport failures with exponential backoff.
+    """Issue the GET, retrying HTTP 429, 5xx and transport failures with jittered exponential backoff.
 
-    Once the retries are spent, a 429 raises RateLimitError, a transport failure raises
-    NetworkError, and a 5xx response is returned for ``_decode`` to report.
+    Before retry ``n`` (from 1) it waits a random time between 0 and ``backoff * 2**(n - 1)``
+    seconds. Once the retries are spent, a 429 raises RateLimitError, a transport failure
+    raises NetworkError, and a 5xx response is returned for ``_decode`` to report.
     """
     for attempt in range(retries + 1):
         if attempt:
-            time.sleep(backoff * 2 ** (attempt - 1))
+            time.sleep(_jitter(backoff * 2 ** (attempt - 1)))
         last = attempt == retries
         try:
             response = session.get(url, params=params, timeout=timeout)
@@ -143,7 +155,8 @@ def get_chart(
 ) -> dict[str, Any]:
     """Fetch ``/v8/finance/chart/{ticker}`` and return its single ``result`` object.
 
-    Retries HTTP 429, 5xx and transport failures with exponential backoff. Once the
+    Retries HTTP 429, 5xx and transport failures with exponential backoff: the wait
+    before each retry is random, capped at ``backoff`` and doubling each time. Once the
     retries are spent, a 429 raises :class:`RateLimitError`, a 5xx :class:`ResponseError`,
     and a transport failure :class:`NetworkError`. Raises :class:`TickerNotFoundError`
     when Yahoo reports no data for the symbol.
