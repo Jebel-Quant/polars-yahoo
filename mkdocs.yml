@@ -4,3 +4,13 @@ site_name: "polars-yahoo"
 site_description: "Minimal Yahoo Finance price history as polars DataFrames"
 repo_url: "https://github.com/tschm/polars-yahoo"
 repo_name: "tschm/polars-yahoo"
+
+# The nav is spelled out so the demo notebook appears in it: `rhiza-task book` exports
+# docs/notebooks/*.py to HTML, and an auto-generated nav lists Markdown pages only.
+# Listing it here also puts it under `rhiza-task book-nav`, which fails the build if it
+# goes missing. New Markdown pages must be added here too.
+nav:
+  - Home: index.md
+  - Demo notebook: notebooks/polars_yahoo_demo.html
+  - Development:
+      - Rhiza: development/rhiza.md

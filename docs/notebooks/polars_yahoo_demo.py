@@ -4,6 +4,8 @@
 #     "marimo>=0.25",
 #     "polars-yahoo",
 #     "altair>=5",
+#     "polars>=1.20",
+#     "curl_cffi>=0.17",
 # ]
 #
 # [tool.uv.sources]
