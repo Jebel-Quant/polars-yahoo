@@ -4,6 +4,8 @@
 #     "marimo>=0.25",
 #     "polars-yahoo",
 #     "altair>=5",
+#     # Installed anyway via polars-yahoo, but imported directly here: `marimo export --sandbox`
+#     # (used by the book) pins every directly imported package missing from this list.
 #     "polars>=1.20",
 #     "curl_cffi>=0.17",
 # ]
