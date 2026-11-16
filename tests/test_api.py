@@ -122,9 +122,9 @@ class TestHttp:
             _http.get_chart("AAPL", {}, session=session)
         assert not isinstance(info.value, yh.TickerNotFoundError)
 
-    @pytest.mark.parametrize("body", [None, [1, 2], "text", {"chart": "oops"}])
+    @pytest.mark.parametrize("body", [None, [1, 2], "text", {"chart": "oops"}, {}, {"unexpected": 1}])
     def test_non_object_body_is_a_response_error(self, body):
-        """A JSON body (or ``chart``) that is not an object raises ResponseError, not AttributeError."""
+        """A JSON body that is not an object, or whose ``chart`` is missing or not an object, raises ResponseError."""
         session = FakeSession({"AAPL": FakeResponse(200, body)})
         with pytest.raises(yh.ResponseError, match="malformed chart payload") as info:
             _http.get_chart("AAPL", {}, session=session)
