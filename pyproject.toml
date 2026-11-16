@@ -31,6 +31,10 @@ dependencies = [
 ]
 
 [dependency-groups]
+notebooks = [
+    "altair>=5",
+    "marimo>=0.25",
+]
 test = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
