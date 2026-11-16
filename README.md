@@ -86,15 +86,17 @@ print(adjusted.row(0))
 - `start` / `end`: `date`, `datetime` or ISO string. Naive values are UTC; `end` is exclusive.
 - `prepost`: include pre- and post-market bars (intraday only).
 - `timeout`, `retries`, `backoff` (keyword-only, on `Ticker(...)` and `download`): seconds
-  to wait for each response (default `30`); how many times an HTTP 429 is retried (default `3`);
-  and the base wait between retries, doubled each time (default `1` second).
+  to wait for each response (default `30`); how many times a failed request is retried
+  (default `3`); and the base wait between retries, doubled each time (default `1` second).
+  Retried are HTTP 429, any 5xx, and transport failures (timeout, DNS or connection error);
+  other responses, such as a 404, are not.
 
 ## Errors
 
 All errors subclass `polars_yahoo.YahooError`:
 `TickerNotFoundError` (unknown or delisted symbol), `RateLimitError`
 (HTTP 429 persisted after retries with exponential backoff), `NetworkError`
-(no HTTP response at all: timeout, DNS or connection failure; carries `reason`) and
+(no HTTP response at all, after retries: timeout, DNS or connection failure; carries `reason`) and
 `ResponseError` (any other unusable response; carries `status` and `reason`).
 `download` skips failing symbols with a warning unless `raise_errors=True`.
 

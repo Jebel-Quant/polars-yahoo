@@ -81,16 +81,23 @@ def pooled_session() -> Iterator[Session]:
 def _send(
     session: Session, url: str, params: dict[str, Any], ticker: str, timeout: float, retries: int, backoff: float
 ) -> Response:
-    """Issue the GET, retrying HTTP 429 with exponential backoff; map transport failures to NetworkError."""
+    """Issue the GET, retrying HTTP 429, 5xx and transport failures with exponential backoff.
+
+    Once the retries are spent, a 429 raises RateLimitError, a transport failure raises
+    NetworkError, and a 5xx response is returned for ``_decode`` to report.
+    """
     for attempt in range(retries + 1):
+        if attempt:
+            time.sleep(backoff * 2 ** (attempt - 1))
+        last = attempt == retries
         try:
             response = session.get(url, params=params, timeout=timeout)
         except OSError as exc:  # curl_cffi's RequestException is an OSError
-            raise NetworkError(ticker, str(exc)) from exc
-        if response.status_code != 429:
+            if last:
+                raise NetworkError(ticker, str(exc)) from exc
+            continue
+        if response.status_code != 429 and (response.status_code < 500 or last):
             return response
-        if attempt < retries:
-            time.sleep(backoff * 2**attempt)
     raise RateLimitError(ticker, retries)
 
 
@@ -136,9 +143,10 @@ def get_chart(
 ) -> dict[str, Any]:
     """Fetch ``/v8/finance/chart/{ticker}`` and return its single ``result`` object.
 
-    Retries HTTP 429 with exponential backoff, then raises :class:`RateLimitError`.
-    Raises :class:`TickerNotFoundError` when Yahoo reports no data for the symbol,
-    and :class:`NetworkError` when no HTTP response arrives at all.
+    Retries HTTP 429, 5xx and transport failures with exponential backoff. Once the
+    retries are spent, a 429 raises :class:`RateLimitError`, a 5xx :class:`ResponseError`,
+    and a transport failure :class:`NetworkError`. Raises :class:`TickerNotFoundError`
+    when Yahoo reports no data for the symbol.
     """
     # Escape every reserved character so the symbol stays one path segment.
     url = CHART_URL.format(ticker=quote(ticker, safe=""))
