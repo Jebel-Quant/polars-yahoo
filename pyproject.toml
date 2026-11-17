@@ -9,7 +9,7 @@ description = "Minimal Yahoo Finance price history as polars DataFrames"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 authors = [{ name = "Thomas Schmelzer" }]
 keywords = [
     "polars",
@@ -48,6 +48,7 @@ notebooks = [
 test = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
+    "yfinance>=1.8",
 ]
 
 [tool.hatch.build.targets.wheel]
