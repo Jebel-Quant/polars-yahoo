@@ -9,6 +9,7 @@
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jebel-quant/polars-yahoo/badge)](https://scorecard.dev/viewer/?uri=github.com/jebel-quant/polars-yahoo)
 [![Rhiza](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjebel-quant%2Fpolars-yahoo%2Fmain%2F.rhiza%2Ftemplate.yml&query=%24.ref&label=rhiza)](https://github.com/jebel-quant/rhiza)
+[![Downloads](https://static.pepy.tech/personalized-badge/polars-yahoo?period=month&units=international_system&left_color=black&right_color=orange&left_text=PyPI%20downloads%20per%20month)](https://pepy.tech/project/polars-yahoo)
 
 Minimal Yahoo Finance price history, returned as [polars](https://pola.rs) DataFrames.
 No pandas, two dependencies (`polars`, `curl_cffi`), and three things only:
