@@ -138,7 +138,7 @@ permissions:
 # workflow's RHIZA_TASK, and moved with them by the same Renovate rule, so the release and CI
 # run one version of the check rather than two.
 env:
-  RHIZA_TASK: rhiza-task@1.10.0
+  RHIZA_TASK: rhiza-task@1.11.0
 
 jobs:
   tag:
@@ -303,7 +303,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: "0.13.8"
+          version: "0.13.10"
 
       - name: Validate consumer dependency setup
         if: ${{ vars.RHIZA_SETUP_ENABLED == 'true' }}
