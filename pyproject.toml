@@ -46,7 +46,7 @@ notebooks = [
     "marimo>=0.25",
 ]
 test = [
-    "pytest>=8.3",
+    "pytest>=9.1.1",
     "pytest-cov>=6.0",
     "yfinance>=1.8",
 ]
